@@ -3,7 +3,7 @@ import mongoose ,{Schema} from 'mongoose'
 import jwt from 'jsonwebtoken'
 
 import bcrypt from 'bcrypt'
-
+import { ApiError } from '../utils/ApiError.js'
 
 
 
@@ -69,6 +69,7 @@ userSchema.methods.isPasswordCorrect = async function  (password) {
 }
 
 userSchema.methods.generateAccessToken = function () {
+    console.log('Accesss Token is executed')
    return jwt.sign(
         {
             _id:this._id,
