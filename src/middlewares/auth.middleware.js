@@ -6,9 +6,9 @@ import { User } from "../models/user.models.js";
 
 export const verifyJWT = aynchHandler ( async (req, res, next) => {
 
-    try {
+    try {      
         console.log(req.cookies.accessToken)
-        const token = req.cookies?.accessToken || req.header ("Authorization")?.replace("Bearer ", "")
+        const token = req.cookies?.accessToken || req.header ("Authorization")
         console.log('Token is found', token);
 
         if(!token){
@@ -30,4 +30,7 @@ export const verifyJWT = aynchHandler ( async (req, res, next) => {
     } catch (error) {
         throw new ApiError(401 ,'Invalid user found')
     }
+
 })
+
+

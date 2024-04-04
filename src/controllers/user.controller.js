@@ -1,3 +1,4 @@
+
 import { aynchHandler } from "../utils/asynchHandler.js";
 
 import { ApiError } from "../utils/ApiError.js";
@@ -9,6 +10,7 @@ import {uploadOneCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 import jwt from 'jsonwebtoken'
+import mongoose from "mongoose";
 
 
 const generateAcessAndRefreshToken = async ( userId ) => {
@@ -210,8 +212,8 @@ const logoutUser = aynchHandler( async (req, res) => {
    await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set : {
-                refreshToken:undefined
+            $unset : {
+                refreshToken:1 // 
             }
         },
         {
@@ -286,7 +288,7 @@ const changedConfirmPassword = aynchHandler( async (req, res) => {
 
     const {oldPassword , newPassword} = req.body
 
-    const user = await User.findById(req.user?.id)
+    const user = await User.findById(req.user?._id)
     
     const isPasswordCorrect = user.isPasswordCorrect(oldPassword)
 
@@ -307,11 +309,236 @@ const changedConfirmPassword = aynchHandler( async (req, res) => {
 })
 
 
+const getCurrentUser = aynchHandler (async (req,res) => {
+    return res
+    .status(200)
+    .json(200 , req.user , 'Current User fetched Sucessfully')
+})
+
+
+const updateAccountDetails = aynchHandler( async ( req , res ) => {
+    const {fullName , email } = req.body
+
+    if(!fullName || !email)
+    {
+        throw new ApiError( 400 , ' fullName and Email are required ')
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set : {
+                fullName : fullName,
+                email : email
+            }
+        },
+        {new : true} 
+        ).select('-password')
+
+        return res.status(200)
+        .json( new ApiResponse ( 200 , user , 'Account details updated Sucessfully'))
+
+})
+
+
+const updateUserAvatar = aynchHandler ( async ( req, res) => {
+    
+    const avatarLocalPath = req.file?.path
+
+    if(!avatarLocalPath )
+    {
+        throw  new ApiError(400 , 'Avatar Path is missing')
+    }
+
+    const avatar = await uploadOneCloudinary(avatarLocalPath)
+
+    if(!avatar)
+    {
+        throw new ApiError(400, 'File not uploded on cloudinary')
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set : {
+                avatar : avatar.url
+            }
+        },
+        {new : true}
+    )
+
+    return res.status(200)
+    .json(
+        new ApiResponse (200 , user , 'Avatar Image updated Sucessfully')
+    )
+
+
+} ) 
+
+
+const updateUsercoverImage = aynchHandler ( async ( req, res) => {
+    
+    const CoverImageLocalPath = req.file?.path
+
+    if(!CoverImageLocalPath )
+    {
+        throw  new ApiError(400 , 'CoverImageLocalPath  is missing')
+    }
+
+    const coverImage = await uploadOneCloudinary(CoverImageLocalPath)
+
+    if(!coverImage.url)
+    {
+        throw new ApiError(400, ' CoverImageLocalPath  not uploded on cloudinary')
+    }
+
+   const user =  await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set : {
+                coverImage : coverImage.url
+            }
+        },
+        {new : true}
+    ).select('-password')
+
+    
+    return res.status(200)
+    .json(
+         new ApiResponse('200' , user , 'CoverImage Updated Sucessfully')
+    )
+
+
+} ) 
+
+const getUserChannelProfile = aynchHandler(async(req, res) => {
+
+       const {username} = req.params
+
+       if(!username)
+       {
+        throw new ApiError(404 , 'Usename is not available')
+       }
+
+       const channel = await User.aggregate([
+        {
+            $match: {
+                username:username
+            }
+        },
+        {
+            $lookup:{
+                from:'subscriptions',
+                localField:'_id',
+                foreignField:'channel',
+                as:'Howmanysubscribers'
+            } 
+        },
+        {
+            $lookup:{
+                from:'subscriptions',
+                localField:'_id',
+                foreignField:'subscriber',
+                as:'HowmanyChannel'
+            }   
+        },
+        {
+            $addFields:{
+                subscribersCount: {
+                    $size:'$Howmanysubscribers'
+                },
+                subscribedToCount:{
+                    $size:'$HowmanyChannel'
+                },
+            }
+        },
+        {
+            $project:{
+                fullName:1,
+                username:1,
+                subscribersCount:1,
+                subscribedToCount:1,
+                avatar:1,
+                coverImage:1,
+                email:1
+            }
+        }
+
+       ])
+
+       if(!channel?.length)
+       {
+        throw new ApiError(404 , 'Agression Pipelines are not perform ')
+       }
+
+
+       return res.status(200).json(new ApiResponse(200 ,channel, 'Information Get sucessfully'))
+
+
+
+})
+
+
+const getWatchHistory = aynchHandler( async ( req, res) => {
+
+    const history = await User.aggregate([
+            {
+                $match:{
+                    _id: new mongoose.Types.ObjectId(req.user._id)
+                }
+            },
+            {
+                $lookup: {
+                    from :'videos',
+                    localField:'watchHistory',
+                    foreignField:'_id',
+                    as:'history',
+                    pipeline:[
+                        {
+                            $lookup:{
+                                from :'users',
+                                localField:'owner',
+                                foreignField:'_id',
+                                as:'historyMoreDetails',
+                                pipeline:[{
+                                    $project:{
+                                        username:1,
+                                        email:1,
+                                        fullName:1
+                                    }
+                                }]
+                            },
+
+                        }
+                    ]
+                },
+                $addFields:{
+                    $first: '$historyMoreDetails'
+                }
+            }
+    ])
+
+    if(!history)
+    {
+        new ApiError(404 , 'Agression pipelines are not be exexuted sucessfully')
+    }
+
+    return res.status(200).json(new ApiResponse(200 , history,'History are generated sucessfullly'))
+
+
+
+})
 
 export {
     registerUser,
     loginUser,
     logoutUser,
     refreshAccessToken,
-
+    changedConfirmPassword,
+    getCurrentUser,
+    updateAccountDetails,
+    updateUserAvatar,
+    updateUsercoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 }
